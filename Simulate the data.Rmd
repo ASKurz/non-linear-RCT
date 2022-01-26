@@ -1,0 +1,135 @@
+---
+title: "Simulate the data"
+author: "A Solomon Kurz"
+date: "`r format(Sys.Date())`"
+
+---
+
+## What?
+
+The goal of this file is to simulate non-linear RCT data that have some of the characteristics of the CAPS data in Reger et al (2016; https://dx.doi.org/10.1037/ccp0000134), which you can find posted on Research Gate at https://tinyurl.com/2p88xk2n.
+
+## Load
+
+Load the necessary R packages.
+
+```{r, warning = F, message = F}
+library(tidyverse)
+library(faux)
+```
+
+## Simulate
+
+In the study, you can find summary statistics for the CAPS for three conditions. Here, we'll jsut simulate the data for the two treatment conditions:
+
+* prolonged exposure (PE) and
+* virtual reality exposure therapy (VRET).
+
+For simplicity, I'm just assuming the test-retest reliability is .5 among all time points (which is probably pretty unlikely).
+
+Simulate the data for the PE condition.
+
+```{r}
+# initial sample size per group
+n <- 54
+
+# simulate MSEL and VABS values for the A/M group
+set.seed(1)
+
+pe <- rnorm_multi(
+  n = n,
+  mu = c(78.28, 65.03, 44.28, 36.63, 38.33),
+  sd = c(16.35, 29.19, 33.73, 31.80, 28.49), 
+  r = .5, 
+  varnames = list("caps.0", "caps.1", "caps.2", "caps.3", "caps.4")
+)
+```
+
+Simulate the data for the VRET condition.
+
+```{r}
+# initial sample size per group
+n <- 54
+
+# simulate MSEL and VABS values for the A/M group
+set.seed(2)
+
+vret <- rnorm_multi(
+  n = n,
+  mu = c(80.44, 71.19, 57.07, 56.64, 53.50),
+  sd = c(16.23, 23.27, 32.32, 31.50, 28.07), 
+  r = .5, 
+  varnames = list("caps.0", "caps.1", "caps.2", "caps.3", "caps.4")
+)
+```
+
+Join the two data sets and wrangle.
+
+```{r}
+d <- bind_rows(pe, vret) %>% 
+  mutate(id = 1:n(),
+         tx = rep(c("pe", "vret"), each = n() / 2)) %>% 
+  pivot_longer(contains("caps"), values_to = "caps") %>% 
+  mutate(wave = str_remove(name, "caps.") %>% as.double()) %>% 
+  mutate(caps = ifelse(caps < 0, 0,
+                       ifelse(caps > 123, 123, caps))) %>% 
+  mutate(weeks = case_when(
+    wave == 0 ~ 0,
+    wave == 1 ~ 2.5,
+    wave == 2 ~ 5,
+    wave == 3 ~ 12,
+    wave == 4 ~ 26
+  )) %>% 
+  mutate(group = ifelse(tx == "pe", "a", "b"))
+
+d
+```
+
+## EDA
+
+Explore the data in a couple plots.
+
+```{r}
+d %>% 
+  ggplot(aes(x = weeks)) +
+  geom_line(aes(y = caps, group = id),
+            size = 1/6, alpha = 1/2) +
+  geom_line(data = . %>% 
+              group_by(weeks, group) %>% 
+              summarise(caps = mean(caps)),
+            aes(y = caps),
+            size = 1.5) +
+  geom_linerange(data = . %>% 
+                   group_by(weeks, group) %>% 
+                   summarise(m = mean(caps),
+                             s = sd(caps)),
+                 aes(y = m, ymin = m - s, ymax = m + s)
+                 ) +
+  scale_x_continuous(breaks = c(0, 2.5, 5, 12, 26),
+                     labels = c("0", "2.5", "5", "12", "26")) +
+  labs(subtitle = "Dark lines are the group means and the vertical lines are plus/minus one standard deviation.\nThe thinner lines are the participant-level trajectories.",
+       y = "dv") +
+  facet_wrap(~ group, labeller = label_both) +
+  theme(panel.grid = element_blank())
+```
+
+```{r}
+d %>% 
+  mutate(wave = factor(wave,))
+  ggplot(aes(x = wave, y = caps)) +
+  geom_boxplot() +
+  facet_wrap(~ tx)
+```
+
+## Session information
+
+```{r}
+sessionInfo()
+```
+
+
+
+
+
+
+
